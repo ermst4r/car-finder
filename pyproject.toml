@@ -1,0 +1,17 @@
+[project]
+name = "langraph"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "black>=25.9.0",
+    "fastapi>=0.120.2",
+    "isort>=7.0.0",
+    "langchain>=1.0.2",
+    "langchain-openai>=1.0.1",
+    "langchain-tavily>=0.2.12",
+    "langgraph>=1.0.1",
+    "python-dotenv>=1.0.0",
+    "uvicorn[standard]>=0.30.0",
+]
