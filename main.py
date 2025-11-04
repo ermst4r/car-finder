@@ -4,9 +4,11 @@ from tools import (
     extract_image_links_and_snippets,
     get_rdw_data,
     check_kenteken,
+    extract_license_plate_from_image,
 )
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
+from openai import BadRequestError
 
 
 load_dotenv()
@@ -14,7 +16,7 @@ load_dotenv()
 
 REFLECT = "reflect"
 GENERATE = "generate"
-
+limit = 10
 
 def answer_node(state: dict) -> dict:
 
@@ -28,9 +30,7 @@ def answer_node(state: dict) -> dict:
         if rdw_data == [] or not isinstance(rdw_data, dict):
             rdw_data = {"year": "", "color": ""}
 
-        car_type = (
-            f"{car_type} {rdw_data['year']} {rdw_data['color']} {license_plate}".strip()
-        )
+        car_type = f"{car_type} {license_plate}".strip()
         print(car_type)
 
     attempts = state.get("attempts", 0)
@@ -53,6 +53,25 @@ def answer_node(state: dict) -> dict:
         image_link = ""
         print(f"[GENERATE] ⚠ No more images available")
 
+    # Extract and validate license plate from image if available
+    license_plate_match = None
+    if image_link and license_plate:
+        print(f"[GENERATE] Extracting license plate from image...")
+        extracted_plate = extract_license_plate_from_image(image_link)
+
+        # Normalize both plates for comparison (remove dashes, uppercase)
+        normalized_provided = license_plate.replace("-", "").strip().upper()
+        normalized_extracted = extracted_plate.replace("-", "").strip().upper()
+
+        license_plate_match = normalized_provided == normalized_extracted
+
+        print(f"[GENERATE] Provided license plate: '{license_plate}'")
+        print(f"[GENERATE] Extracted license plate: '{extracted_plate}'")
+        print(f"[GENERATE] License plate match: {license_plate_match}")
+
+        if not license_plate_match:
+            print(f"[GENERATE] ⚠ License plate mismatch!")
+
     print(">" * 60 + "\n")
 
     return {
@@ -60,6 +79,7 @@ def answer_node(state: dict) -> dict:
         "image_url": image_link,
         "attempts": attempts + 1,
         "car_type": car_type,
+        "license_plate_match": license_plate_match,
     }
 
 
@@ -88,10 +108,17 @@ def reflection_node(state: dict) -> dict:
 
     print(f"[REFLECTION] Analyzing image...")
 
-    is_car_result = analyze_image_is_car(image_url, raw_car_type)
-
-    is_car = is_car_result.get("is_car", False)
-    detected_car_type = is_car_result.get("car_type", "not a car")
+    try:
+        is_car_result = analyze_image_is_car(image_url, raw_car_type)
+        is_car = is_car_result.get("is_car", False)
+        detected_car_type = is_car_result.get("car_type", "not a car")
+    except BadRequestError as e:
+        # Handle invalid image URL errors (e.g., can't download from Instagram)
+        print(f"[REFLECTION] ⚠ Error analyzing image: {e}")
+        print(f"[REFLECTION] Image URL cannot be processed. Moving to next image...")
+        is_car_result = {"is_car": False, "car_type": "image download failed"}
+        is_car = False
+        detected_car_type = "image download failed"
 
     print(f"[REFLECTION] Result: is_car = {is_car}")
     print(f"[REFLECTION] Detected car type: '{detected_car_type}'")
@@ -112,18 +139,35 @@ def reflection_node(state: dict) -> dict:
 def should_continue(state: dict) -> str:
     attempts = state.get("attempts", 0)
     is_car = state.get("is_car", False)
+    license_plate = state.get("license_plate", "")
+    license_plate_match = state.get("license_plate_match")
 
     print("\n" + "-" * 60)
     print(f"[DECISION] Attempts: {attempts}, Is car: {is_car}")
+    if license_plate:
+        print(f"[DECISION] License plate match: {license_plate_match}")
 
-    # If it's a car, we're done
+    # If it's a car, check license plate match if license plate was provided
     if is_car:
-        print(f"[DECISION] ✓ Found matching car! Ending search.")
-        print("-" * 60 + "\n")
-        return END
+        # If license plate was provided, also check if it matches
+        if license_plate:
+            if license_plate_match:
+                print(
+                    f"[DECISION] ✓ Found matching car with matching license plate! Ending search."
+                )
+                print("-" * 60 + "\n")
+                return END
+            else:
+                print(
+                    f"[DECISION] ⚠ Car matches but license plate doesn't. Continuing search..."
+                )
+        else:
+            print(f"[DECISION] ✓ Found matching car! Ending search.")
+            print("-" * 60 + "\n")
+            return END
 
     # If we've tried 8 times, stop
-    if attempts >= 4:
+    if attempts >= limit:
         print(f"[DECISION] ✗ Maximum attempts ({attempts}) reached. Stopping.")
         print("-" * 60 + "\n")
         return END
@@ -162,3 +206,4 @@ def invoke(car_type: str, license_plate: str = "") -> dict:
             "license_plate": license_plate or "",
         }
     )
+invoke("Ford mustang", "P304RL")

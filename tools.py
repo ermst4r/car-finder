@@ -83,6 +83,68 @@ def analyze_image_is_car(image_url: str, car_type: str) -> dict:
         return {"is_car": False, "car_type": "not a car"}
 
 
+def extract_license_plate_from_image(image_url: str) -> str:
+    """Extract the license plate from an image URL using OpenAI vision.
+
+    Args:
+        image_url: URL of the image to analyze.
+
+    Returns:
+        The license plate as a string, or empty string if not found or on error.
+    """
+    load_dotenv()
+    # Check if the image URL is reachable and returns a 200 status before continuing
+    try:
+        req = urllib.request.Request(image_url, method="HEAD")
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as resp:
+            if resp.status != 200:
+                print(f"Image not reachable: {resp.status}")
+                return ""
+    except urllib.error.URLError as e:
+        print(f"HEAD request failed for image URL: {e}")
+        return ""
+
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    prompt_text = (
+        "Analyze this image and extract the license plate number from the vehicle. "
+        "Look for any visible license plate, registration plate, or number plate on the car. "
+        "Return ONLY the license plate text as a plain string, without any additional text, "
+        "markdown, or explanation. If no license plate is visible, return an empty string."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt_text},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # Clean up the response - remove any markdown code blocks or extra formatting
+        content = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
+        content = content.strip()
+
+        # If empty or very short, return empty string
+        if not content or len(content) < 2:
+            return ""
+
+        return content
+    except Exception as e:
+        print(f"Error extracting license plate from image: {e}")
+        return ""
+
+
 def extract_image_links_and_snippets(car_type: str) -> list[dict]:
     """Extract all link and snippet nodes from Google Custom Search API response.
 
