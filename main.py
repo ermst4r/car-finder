@@ -18,7 +18,6 @@ REFLECT = "reflect"
 GENERATE = "generate"
 limit = 10
 
-
 def answer_node(state: dict) -> dict:
 
     messages = state.get("messages", [])

@@ -51,6 +51,7 @@ def analyze_image_is_car(image_url: str, car_type: str) -> dict:
         "The car should not be an toy, it should be a real car."
         "If it is not a car, or if it's a different car type, set is_car to false. "
         "If it matches, return the detected car type in the car_type field."
+        "If you detect multiple car types, then you should return the is_car field as false and the car_type field as an empty string."
     )
 
     response = client.chat.completions.create(
