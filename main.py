@@ -18,6 +18,7 @@ REFLECT = "reflect"
 GENERATE = "generate"
 limit = 10
 
+
 def answer_node(state: dict) -> dict:
 
     messages = state.get("messages", [])
@@ -206,4 +207,3 @@ def invoke(car_type: str, license_plate: str = "") -> dict:
             "license_plate": license_plate or "",
         }
     )
-invoke("Ford mustang", "P304RL")
